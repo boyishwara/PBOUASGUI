@@ -1,81 +1,140 @@
 package controller;
 
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import javax.swing.JOptionPane; // Untuk menampilkan pesan sederhana
+import java.util.Map;
+import javax.swing.JOptionPane;
 import model.*;
+import util.KoneksiDatabase;
 
+// Import tambahan untuk komponen UI dialog
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JPasswordField;
+import javax.swing.JTextField;
+import java.awt.GridLayout;
+
+/**
+ * Controller utama yang menghubungkan View dengan Model dan Database.
+ * Semua operasi data (CRUD) dilakukan di sini melalui JDBC.
+ */
 public class AppController {
-    // Tidak lagi menggunakan MainView console
-    // private MainView view; 
-    private List<Mahasiswa> daftarMahasiswa;
-    private List<Soal> bankSoalTahap1;
+
+    // State untuk sesi login saat ini, tidak lagi menyimpan list data.
     private Mahasiswa loggedInMahasiswa;
-    private boolean koordinatorLoggedIn;
-    private List<Ujian> daftarUjian; // Untuk menyimpan data ujian mahasiswa
-    private Koordinator dummyKoordinator;
     private Koordinator loggedInKoordinator;
+    private boolean koordinatorLoggedIn;
 
     public AppController() {
-        // this.view = new MainView(); // Dihapus
-        this.daftarMahasiswa = new ArrayList<>();
-        this.bankSoalTahap1 = new ArrayList<>();
-        this.daftarUjian = new ArrayList<>();
-        this.loggedInMahasiswa = null;
-        this.koordinatorLoggedIn = false;
-        this.dummyKoordinator = new Koordinator("admin", "Admin Koordinator", "admin");
-        this.loggedInKoordinator = null;
-        inisialisasiDataDummy();
-    }
+        // --- BARU: Dialog Kredensial Database ---
+        // Terus menampilkan dialog sampai koneksi berhasil atau pengguna membatalkan.
+        while (true) {
+            // Membuat panel untuk dialog input
+            JPanel panel = new JPanel(new GridLayout(0, 2, 5, 5));
+            JTextField userField = new JTextField("root"); // Nilai default 'root'
+            JPasswordField passField = new JPasswordField();
+            panel.add(new JLabel("Username Database:"));
+            panel.add(userField);
+            panel.add(new JLabel("Password Database:"));
+            panel.add(passField);
 
-    private void inisialisasiDataDummy() {
-        // Dummy Soal
-        bankSoalTahap1.add(new Soal("Apa kepanjangan dari UML?", new String[]{"Unified Modeling Language", "Universal Markup Language", "United Machine Learning", "Understood Model Logic"}, 0, "Tahap1"));
-        bankSoalTahap1.add(new Soal("Diagram UML yang menggambarkan interaksi antar objek berdasarkan urutan waktu adalah...", new String[]{"Class Diagram", "Use Case Diagram", "Sequence Diagram", "Activity Diagram"}, 2, "Tahap1"));
-        bankSoalTahap1.add(new Soal("Yang BUKAN merupakan aktor dalam sistem di jurnal adalah...", new String[]{"Mahasiswa", "Koordinator UKM", "Dosen Wali", "Dekan Fakultas Teknologi"}, 2, "Tahap1"));
+            // Menampilkan dialog
+            int result = JOptionPane.showConfirmDialog(null, panel, "Inisialisasi Koneksi Database", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
 
-        // Dummy Mahasiswa
-        Mahasiswa m1 = new Mahasiswa("111", "Budi", "Laki-laki", "SI", "budi@email.com", "pass1", "081", "Jl. ABC");
-        m1.tambahDokumen(new Dokumen(m1.getNim(), "KTM_Budi.pdf", "/path/ktm_budi.pdf"));
-        daftarMahasiswa.add(m1);
+            if (result == JOptionPane.OK_OPTION) {
+                String user = userField.getText();
+                String pass = new String(passField.getPassword());
+                
+                // Mencoba inisialisasi koneksi dengan kredensial yang diberikan
+                if (KoneksiDatabase.init(user, pass)) {
+                    JOptionPane.showMessageDialog(null, "Koneksi database berhasil!", "Sukses", JOptionPane.INFORMATION_MESSAGE);
+                    break; // Keluar dari loop jika koneksi sukses
+                } 
+                // Jika gagal, KoneksiDatabase.init() akan menampilkan pesan error sendiri, dan loop akan berlanjut.
+            } else {
+                // Pengguna menekan Batal atau menutup dialog, maka aplikasi akan keluar.
+                System.exit(0);
+            }
+        }
         
-        Mahasiswa m2 = new Mahasiswa("222", "Ani", "Perempuan", "Inf", "ani@email.com", "pass2", "082", "Jl. DEF");
-        daftarMahasiswa.add(m2);
+        // --- Logika Konstruktor Asli ---
+        this.loggedInMahasiswa = null;
+        this.loggedInKoordinator = null;
+        this.koordinatorLoggedIn = false;
     }
 
     // --- Metode untuk Login ---
     public boolean loginMahasiswa(String nim, String password) {
-        Optional<Mahasiswa> mhs = daftarMahasiswa.stream()
-                                    .filter(m -> m.getNim().equals(nim) && m.getPassword().equals(password))
-                                    .findFirst();
-        if (mhs.isPresent()) {
-            loggedInMahasiswa = mhs.get();
-            koordinatorLoggedIn = false;
-            return true;
-        } else {
-            loggedInMahasiswa = null;
-            // Cek apakah NIM ada tapi password salah, atau NIM tidak ada sama sekali
-            boolean nimExists = daftarMahasiswa.stream().anyMatch(m -> m.getNim().equals(nim));
-            if (nimExists) {
-                 JOptionPane.showMessageDialog(null, "Login gagal. Password salah.", "Login Error", JOptionPane.ERROR_MESSAGE);
-            } else {
-                JOptionPane.showMessageDialog(null, "Login gagal. NIM tidak ditemukan.", "Login Error", JOptionPane.ERROR_MESSAGE);
+        String sql = "SELECT * FROM mahasiswa WHERE nim = ? AND password = ?";
+        try (Connection conn = KoneksiDatabase.getKoneksi();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            pstmt.setString(1, nim);
+            pstmt.setString(2, password); // Di aplikasi nyata, bandingkan password yang sudah di-hash
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    // Data ditemukan, buat objek Mahasiswa lengkap dengan status kelulusannya
+                    Kelulusan status = new Kelulusan(
+                        rs.getString("nim"),
+                        rs.getString("status_tahap1"),
+                        rs.getString("status_tahap2"),
+                        rs.getString("status_akhir")
+                    );
+                    
+                    loggedInMahasiswa = new Mahasiswa(
+                        rs.getString("nim"),
+                        rs.getString("nama_mahasiswa"),
+                        rs.getString("jenis_kelamin"),
+                        rs.getString("prodi"),
+                        rs.getString("email"),
+                        rs.getString("password"),
+                        rs.getString("nomor_telp"),
+                        rs.getString("alamat"),
+                        status // Masukkan objek status kelulusan
+                    );
+                    
+                    koordinatorLoggedIn = false;
+                    loggedInKoordinator = null;
+                    return true;
+                } else {
+                    loggedInMahasiswa = null;
+                    JOptionPane.showMessageDialog(null, "Login gagal. NIM atau Password salah.", "Login Error", JOptionPane.ERROR_MESSAGE);
+                    return false;
+                }
             }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error database: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             return false;
         }
     }
 
     public boolean loginKoordinator(String id, String password) {
-        if (dummyKoordinator.getId().equals(id) && dummyKoordinator.getPassword().equals(password)) {
-            koordinatorLoggedIn = true;
-            loggedInKoordinator = dummyKoordinator;
-            loggedInMahasiswa = null;
-            return true;
-        } else {
-            koordinatorLoggedIn = false;
-            loggedInKoordinator = null;
-            JOptionPane.showMessageDialog(null, "ID atau Password Koordinator salah.", "Login Error", JOptionPane.ERROR_MESSAGE);
+        String sql = "SELECT * FROM koordinator WHERE id = ? AND password = ?";
+        try (Connection conn = KoneksiDatabase.getKoneksi();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            pstmt.setString(1, id);
+            pstmt.setString(2, password);
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    loggedInKoordinator = new Koordinator(rs.getString("id"), rs.getString("nama"), rs.getString("password"));
+                    koordinatorLoggedIn = true;
+                    loggedInMahasiswa = null;
+                    return true;
+                } else {
+                    koordinatorLoggedIn = false;
+                    loggedInKoordinator = null;
+                    JOptionPane.showMessageDialog(null, "ID atau Password Koordinator salah.", "Login Error", JOptionPane.ERROR_MESSAGE);
+                    return false;
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error database: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             return false;
         }
     }
@@ -88,36 +147,112 @@ public class AppController {
 
     // --- Metode untuk Registrasi Mahasiswa ---
     public boolean registerMahasiswa(String nim, String nama, String jenisKelamin, String prodi, String email, String password, String nomorTelp, String alamat) {
-        boolean nimExists = daftarMahasiswa.stream().anyMatch(m -> m.getNim().equals(nim));
-        if (nimExists) {
-            JOptionPane.showMessageDialog(null, "Registrasi gagal. NIM " + nim + " sudah terdaftar.", "Registrasi Error", JOptionPane.ERROR_MESSAGE);
-            return false;
+        String checkSql = "SELECT nim FROM mahasiswa WHERE nim = ? OR email = ?";
+        String insertSql = "INSERT INTO mahasiswa (nim, nama_mahasiswa, jenis_kelamin, prodi, email, password, nomor_telp, alamat) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+        try (Connection conn = KoneksiDatabase.getKoneksi()) {
+            // Cek dulu apakah NIM atau email sudah ada
+            try (PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
+                checkStmt.setString(1, nim);
+                checkStmt.setString(2, email);
+                try (ResultSet rs = checkStmt.executeQuery()) {
+                    if (rs.next()) {
+                        JOptionPane.showMessageDialog(null, "Registrasi gagal. NIM atau Email sudah terdaftar.", "Registrasi Error", JOptionPane.ERROR_MESSAGE);
+                        return false;
+                    }
+                }
+            }
+
+            // Jika tidak ada, lakukan INSERT
+            try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
+                insertStmt.setString(1, nim);
+                insertStmt.setString(2, nama);
+                insertStmt.setString(3, jenisKelamin);
+                insertStmt.setString(4, prodi);
+                insertStmt.setString(5, email);
+                insertStmt.setString(6, password);
+                insertStmt.setString(7, nomorTelp);
+                insertStmt.setString(8, alamat);
+
+                int affectedRows = insertStmt.executeUpdate();
+                if (affectedRows > 0) {
+                    JOptionPane.showMessageDialog(null, "Registrasi berhasil untuk NIM: " + nim + ". Silakan login.", "Registrasi Sukses", JOptionPane.INFORMATION_MESSAGE);
+                    return true;
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error database saat registrasi: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
-        Mahasiswa newMahasiswa = new Mahasiswa(nim, nama, jenisKelamin, prodi, email, password, nomorTelp, alamat);
-        daftarMahasiswa.add(newMahasiswa);
-        JOptionPane.showMessageDialog(null, "Registrasi berhasil untuk NIM: " + nim + ". Silakan login.", "Registrasi Sukses", JOptionPane.INFORMATION_MESSAGE);
-        return true;
+        return false;
     }
 
     // --- Getter untuk status login dan data ---
-    public Mahasiswa getLoggedInMahasiswa() {
-        return loggedInMahasiswa;
-    }
-
-    public Koordinator getLoggedInKoordinator() {
-        return loggedInKoordinator;
-    }
-
-    public boolean isKoordinatorLoggedIn() {
-        return koordinatorLoggedIn;
-    }
+    public Mahasiswa getLoggedInMahasiswa() { return loggedInMahasiswa; }
+    public Koordinator getLoggedInKoordinator() { return loggedInKoordinator; }
+    public boolean isKoordinatorLoggedIn() { return koordinatorLoggedIn; }
     
     public List<Mahasiswa> getDaftarMahasiswa() {
+        List<Mahasiswa> daftarMahasiswa = new ArrayList<>();
+        String sql = "SELECT * FROM mahasiswa ORDER BY nama_mahasiswa";
+        try (Connection conn = KoneksiDatabase.getKoneksi();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            
+            while(rs.next()){
+                Kelulusan status = new Kelulusan(
+                    rs.getString("nim"),
+                    rs.getString("status_tahap1"),
+                    rs.getString("status_tahap2"),
+                    rs.getString("status_akhir")
+                );
+                Mahasiswa mhs = new Mahasiswa(
+                    rs.getString("nim"),
+                    rs.getString("nama_mahasiswa"),
+                    rs.getString("jenis_kelamin"),
+                    rs.getString("prodi"),
+                    rs.getString("email"),
+                    "******", // Jangan tampilkan password
+                    rs.getString("nomor_telp"),
+                    rs.getString("alamat"),
+                    status
+                );
+                daftarMahasiswa.add(mhs);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Gagal mengambil data mahasiswa: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
         return daftarMahasiswa;
     }
 
     public List<Soal> getBankSoalTahap1() {
-        return bankSoalTahap1;
+        List<Soal> bankSoal = new ArrayList<>();
+        String sql = "SELECT * FROM soal WHERE tipe_ujian = 'Tahap1'";
+        try (Connection conn = KoneksiDatabase.getKoneksi();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+
+            while (rs.next()) {
+                Soal soal = new Soal(
+                    rs.getInt("id_soal"),
+                    rs.getString("pertanyaan"),
+                    new String[]{
+                        rs.getString("opsi_a"),
+                        rs.getString("opsi_b"),
+                        rs.getString("opsi_c"),
+                        rs.getString("opsi_d")
+                    },
+                    rs.getInt("kunci_jawaban_index"),
+                    rs.getString("tipe_ujian")
+                );
+                bankSoal.add(soal);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Gagal mengambil data soal: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+        return bankSoal;
     }
 
     // --- Metode untuk Mahasiswa ---
@@ -126,12 +261,22 @@ public class AppController {
             JOptionPane.showMessageDialog(null, "Harap login terlebih dahulu.", "Error", JOptionPane.ERROR_MESSAGE);
             return false;
         }
-        // Simulasi validasi dan penyimpanan
-        Dokumen doc = new Dokumen(loggedInMahasiswa.getNim(), namaDokumen, pathFile);
-        loggedInMahasiswa.tambahDokumen(doc);
-        // view.displayMessage("Dokumen '" + namaDokumen + "' berhasil diupload. Sistem akan mengirim notifikasi (simulasi).");
-        // view.displayMessage("Silakan menunggu jadwal ujian tahap I.");
-        return true; // Anggap selalu berhasil untuk GUI
+        String sql = "INSERT INTO dokumen (nim_mahasiswa, nama_dokumen, path_file) VALUES (?, ?, ?)";
+        try (Connection conn = KoneksiDatabase.getKoneksi();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            pstmt.setString(1, loggedInMahasiswa.getNim());
+            pstmt.setString(2, namaDokumen);
+            pstmt.setString(3, pathFile);
+            
+            int affectedRows = pstmt.executeUpdate();
+            return affectedRows > 0;
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Gagal mengupload dokumen: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
     }
 
     public Ujian mulaiUjianTahap1() {
@@ -139,35 +284,89 @@ public class AppController {
             JOptionPane.showMessageDialog(null, "Harap login terlebih dahulu.", "Error", JOptionPane.ERROR_MESSAGE);
             return null;
         }
-        if (bankSoalTahap1.isEmpty()) {
-            JOptionPane.showMessageDialog(null, "Belum ada soal ujian tahap 1 yang tersedia. Hubungi koordinator.", "Info Ujian", JOptionPane.INFORMATION_MESSAGE);
-            return null;
-        }
-        // Cek apakah sudah pernah ikut ujian tahap 1 atau sedang menunggu pengumuman
         String statusTahap1 = loggedInMahasiswa.getStatusKelulusan().getStatusTahap1();
         if (!"Belum Ujian".equals(statusTahap1)) {
              JOptionPane.showMessageDialog(null, "Anda sudah mengikuti Ujian Tahap 1 atau status Anda adalah '" + statusTahap1 + "'.", "Info Ujian", JOptionPane.WARNING_MESSAGE);
-            return null; // Tidak bisa memulai ujian lagi jika sudah atau sedang diproses
+            return null;
         }
-
-        Ujian ujian = new Ujian(loggedInMahasiswa.getNim(), "Tahap1");
-        // Daftar ujian yang sedang dikerjakan bisa disimpan di controller atau langsung dihandle oleh GUI dialog ujian
-        return ujian;
+        return new Ujian(loggedInMahasiswa.getNim(), "Tahap1");
     }
 
     public void submitUjianTahap1(Ujian ujianSelesai) {
         if (loggedInMahasiswa == null || ujianSelesai == null) return;
 
-        ujianSelesai.hitungSkor(bankSoalTahap1); // Sistem memeriksa jawaban
-        daftarUjian.add(ujianSelesai); // Simpan ujian yang sudah selesai
-        
-        loggedInMahasiswa.getStatusKelulusan().setStatusTahap1("Menunggu Pengumuman");
-        // view.displayMessage("Ujian Tahap 1 selesai. Jawaban Anda telah tersimpan.");
-        // view.displayMessage("Hasil akan diumumkan oleh Koordinator.");
+        List<Soal> bankSoal = getBankSoalTahap1(); // Ambil soal dari DB untuk perhitungan skor
+        ujianSelesai.hitungSkor(bankSoal);
+        int skor = ujianSelesai.getSkor();
+
+        Connection conn = null;
+        try {
+            conn = KoneksiDatabase.getKoneksi();
+            conn.setAutoCommit(false); // Mulai transaksi
+
+            // 1. Simpan data ujian ke tabel 'ujian' dan dapatkan id_ujian
+            String sqlUjian = "INSERT INTO ujian (nim_mahasiswa, tipe_ujian, skor) VALUES (?, ?, ?)";
+            int idUjian;
+            try (PreparedStatement pstmtUjian = conn.prepareStatement(sqlUjian, Statement.RETURN_GENERATED_KEYS)) {
+                pstmtUjian.setString(1, ujianSelesai.getNimMahasiswa());
+                pstmtUjian.setString(2, "Tahap1");
+                pstmtUjian.setInt(3, skor);
+                pstmtUjian.executeUpdate();
+                
+                try (ResultSet generatedKeys = pstmtUjian.getGeneratedKeys()) {
+                    if (generatedKeys.next()) {
+                        idUjian = generatedKeys.getInt(1);
+                    } else {
+                        throw new SQLException("Gagal membuat ujian, tidak ada ID yang diperoleh.");
+                    }
+                }
+            }
+
+            // 2. Simpan semua jawaban ke tabel 'jawaban_ujian'
+            String sqlJawaban = "INSERT INTO jawaban_ujian (id_ujian, id_soal, jawaban_index) VALUES (?, ?, ?)";
+            try (PreparedStatement pstmtJawaban = conn.prepareStatement(sqlJawaban)) {
+                for (Map.Entry<Integer, Integer> jawaban : ujianSelesai.getJawabanMahasiswa().entrySet()) {
+                    pstmtJawaban.setInt(1, idUjian);
+                    pstmtJawaban.setInt(2, jawaban.getKey());   // id_soal
+                    pstmtJawaban.setInt(3, jawaban.getValue()); // jawaban_index
+                    pstmtJawaban.addBatch();
+                }
+                pstmtJawaban.executeBatch();
+            }
+            
+            // 3. Update status mahasiswa menjadi 'Menunggu Pengumuman'
+            String sqlUpdateStatus = "UPDATE mahasiswa SET status_tahap1 = 'Menunggu Pengumuman' WHERE nim = ?";
+            try (PreparedStatement pstmtUpdate = conn.prepareStatement(sqlUpdateStatus)) {
+                pstmtUpdate.setString(1, loggedInMahasiswa.getNim());
+                pstmtUpdate.executeUpdate();
+            }
+
+            conn.commit(); // Selesaikan transaksi jika semua berhasil
+            loggedInMahasiswa.getStatusKelulusan().setStatusTahap1("Menunggu Pengumuman");
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+            try {
+                if (conn != null) conn.rollback(); // Batalkan transaksi jika ada error
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+            JOptionPane.showMessageDialog(null, "Gagal menyimpan hasil ujian: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        } finally {
+            try {
+                if (conn != null) {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
     }
     
     public Kelulusan getStatusKelulusanMahasiswa() {
         if (loggedInMahasiswa != null) {
+            // Refresh data dari DB jika diperlukan, atau andalkan data saat login
             return loggedInMahasiswa.getStatusKelulusan();
         }
         return null;
@@ -179,117 +378,173 @@ public class AppController {
             JOptionPane.showMessageDialog(null, "Hanya koordinator yang dapat menambah soal.", "Error", JOptionPane.ERROR_MESSAGE);
             return false;
         }
-        Soal soalBaru = new Soal(pertanyaan, opsiJawaban, kunciJawabanIndex, "Tahap1");
-        bankSoalTahap1.add(soalBaru);
-        return true;
+        String sql = "INSERT INTO soal (pertanyaan, opsi_a, opsi_b, opsi_c, opsi_d, kunci_jawaban_index) VALUES (?, ?, ?, ?, ?, ?)";
+        try (Connection conn = KoneksiDatabase.getKoneksi();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            pstmt.setString(1, pertanyaan);
+            pstmt.setString(2, opsiJawaban[0]);
+            pstmt.setString(3, opsiJawaban[1]);
+            pstmt.setString(4, opsiJawaban[2]);
+            pstmt.setString(5, opsiJawaban[3]);
+            pstmt.setInt(6, kunciJawabanIndex);
+
+            int affectedRows = pstmt.executeUpdate();
+            return affectedRows > 0;
+            
+        } catch (SQLException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Gagal menambah soal: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
     }
 
     public String prosesHasilUjianTahap1() {
         if (!koordinatorLoggedIn) return "Hanya koordinator yang dapat memproses hasil.";
         
         StringBuilder prosesLog = new StringBuilder("--- Proses Hasil Ujian Tahap 1 ---\n");
-        boolean adaYangDiproses = false;
+        String sqlSelect = "SELECT nim FROM mahasiswa WHERE status_tahap1 = 'Menunggu Pengumuman'";
+        String sqlGetUjian = "SELECT skor FROM ujian WHERE nim_mahasiswa = ? AND tipe_ujian = 'Tahap1' ORDER BY waktu_submit DESC LIMIT 1";
+        String sqlUpdate = "UPDATE mahasiswa SET status_tahap1 = ? WHERE nim = ?";
+        
+        long totalSoal = getBankSoalTahap1().size();
+        if (totalSoal == 0) {
+            return "Tidak ada soal di database. Tidak dapat memproses hasil.";
+        }
 
-        for (Mahasiswa mhs : daftarMahasiswa) {
-            // Cari ujian yang sesuai untuk mahasiswa ini dari daftarUjian
-            Optional<Ujian> ujianOpt = daftarUjian.stream()
-                .filter(u -> u.getNimMahasiswa().equals(mhs.getNim()) && "Tahap1".equals(u.getTipeUjian()))
-                .findFirst(); // Ambil yang terbaru jika ada multiple, atau perlu logika lebih lanjut
+        try (Connection conn = KoneksiDatabase.getKoneksi();
+             Statement stmtSelect = conn.createStatement();
+             ResultSet rs = stmtSelect.executeQuery(sqlSelect)) {
 
-            if ("Menunggu Pengumuman".equals(mhs.getStatusKelulusan().getStatusTahap1())) {
-                 adaYangDiproses = true;
-                if (ujianOpt.isPresent()) {
-                    Ujian ujianMhs = ujianOpt.get();
-                    // Skor sudah dihitung saat submit, sekarang tentukan lulus/tidak berdasarkan skor
-                    // Misal, lulus jika skor > 50% dari total soal
-                    boolean lulusTahap1 = false;
-                    if (!bankSoalTahap1.isEmpty()) {
-                        lulusTahap1 = (double) ujianMhs.getSkor() / bankSoalTahap1.size() > 0.5;
+            boolean adaYangDiproses = false;
+            while(rs.next()){
+                adaYangDiproses = true;
+                String nim = rs.getString("nim");
+                
+                try (PreparedStatement pstmtGetUjian = conn.prepareStatement(sqlGetUjian)) {
+                    pstmtGetUjian.setString(1, nim);
+                    try (ResultSet rsUjian = pstmtGetUjian.executeQuery()) {
+                        if (rsUjian.next()) {
+                            int skor = rsUjian.getInt("skor");
+                            boolean lulus = (double) skor / totalSoal > 0.5;
+                            String statusLulus = lulus ? "Lulus" : "Tidak Lulus";
+
+                            try (PreparedStatement pstmtUpdate = conn.prepareStatement(sqlUpdate)) {
+                                pstmtUpdate.setString(1, statusLulus);
+                                pstmtUpdate.setString(2, nim);
+                                pstmtUpdate.executeUpdate();
+                                prosesLog.append("NIM ").append(nim).append(": Skor ").append(skor).append(" -> ").append(statusLulus).append("\n");
+                            }
+                        } else {
+                            prosesLog.append("NIM ").append(nim).append(": Data ujian tidak ditemukan, status tidak diubah.\n");
+                        }
                     }
-                    mhs.getStatusKelulusan().setStatusTahap1(lulusTahap1 ? "Lulus" : "Tidak Lulus");
-                    prosesLog.append("NIM ").append(mhs.getNim()).append(" (").append(mhs.getNamaMahasiswa()).append("): Skor ").append(ujianMhs.getSkor()).append(" -> ").append(mhs.getStatusKelulusan().getStatusTahap1()).append("\n");
-                } else {
-                    // Jika status "Menunggu Pengumuman" tapi tidak ada record ujian, mungkin ada kesalahan data
-                    // Atau mahasiswa belum submit ujian dengan benar. Untuk amannya, set Tidak Lulus atau biarkan.
-                    // mhs.getStatusKelulusan().setStatusTahap1("Tidak Lulus (Data Ujian Tidak Ditemukan)");
-                    prosesLog.append("NIM ").append(mhs.getNim()).append(" (").append(mhs.getNamaMahasiswa()).append("): Data ujian tidak ditemukan, status tidak diubah.\n");
                 }
             }
-        }
-        if (!adaYangDiproses) {
-            prosesLog.append("Tidak ada mahasiswa dengan status 'Menunggu Pengumuman' untuk diproses.\n");
+            if (!adaYangDiproses) {
+                prosesLog.append("Tidak ada mahasiswa dengan status 'Menunggu Pengumuman' untuk diproses.\n");
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+            prosesLog.append("\nERROR SAAT MEMPROSES: ").append(e.getMessage());
         }
         prosesLog.append("Pemrosesan hasil Ujian Tahap 1 selesai.");
         return prosesLog.toString();
     }
     
     public Mahasiswa findMahasiswaByNim(String nim) {
-        return daftarMahasiswa.stream().filter(m -> m.getNim().equals(nim)).findFirst().orElse(null);
+        // Ini hanya mencari data dasar, bisa disesuaikan jika perlu data lebih lengkap
+        String sql = "SELECT * FROM mahasiswa WHERE nim = ?";
+        try (Connection conn = KoneksiDatabase.getKoneksi();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            pstmt.setString(1, nim);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    Kelulusan status = new Kelulusan(
+                        rs.getString("nim"), rs.getString("status_tahap1"), rs.getString("status_tahap2"), rs.getString("status_akhir")
+                    );
+                    return new Mahasiswa(
+                        rs.getString("nim"), rs.getString("nama_mahasiswa"), rs.getString("jenis_kelamin"), 
+                        rs.getString("prodi"), rs.getString("email"), "******", rs.getString("nomor_telp"),
+                        rs.getString("alamat"), status
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
     public String inputHasilUjianTahap2(String nim, String hasilWawancara) {
         if (!koordinatorLoggedIn) return "Hanya koordinator yang dapat input hasil.";
+        
         Mahasiswa mhs = findMahasiswaByNim(nim);
+        if (mhs == null) return "Mahasiswa dengan NIM " + nim + " tidak ditemukan.";
+        if (!"Lulus".equals(mhs.getStatusKelulusan().getStatusTahap1())) {
+            return "Mahasiswa dengan NIM " + nim + " belum lulus Tahap 1.";
+        }
 
-        if (mhs != null) {
-            if (!"Lulus".equals(mhs.getStatusKelulusan().getStatusTahap1())) {
-                return "Mahasiswa dengan NIM " + nim + " belum lulus Tahap 1.";
-            }
-            // Cek apakah sudah pernah diinput atau belum
-            String statusTahap2 = mhs.getStatusKelulusan().getStatusTahap2();
-            if (!"Belum Ujian".equals(statusTahap2) && !"Menunggu Pengumuman".equals(statusTahap2)) {
-                 return "Hasil Tahap 2 untuk NIM " + nim + " sudah diinput sebelumnya: " + statusTahap2;
-            }
-
-            if (hasilWawancara.equalsIgnoreCase("Lulus") || hasilWawancara.equalsIgnoreCase("Tidak Lulus")) {
-                mhs.getStatusKelulusan().setStatusTahap2(hasilWawancara.substring(0,1).toUpperCase() + hasilWawancara.substring(1).toLowerCase());
-                return "Hasil Ujian Tahap 2 untuk NIM " + nim + " berhasil disimpan sebagai: " + mhs.getStatusKelulusan().getStatusTahap2();
+        String sql = "UPDATE mahasiswa SET status_tahap2 = ? WHERE nim = ?";
+        try (Connection conn = KoneksiDatabase.getKoneksi();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            pstmt.setString(1, hasilWawancara);
+            pstmt.setString(2, nim);
+            
+            int affectedRows = pstmt.executeUpdate();
+            if (affectedRows > 0) {
+                return "Hasil Ujian Tahap 2 untuk NIM " + nim + " berhasil disimpan sebagai: " + hasilWawancara;
             } else {
-                return "Input tidak valid. Gunakan 'Lulus' atau 'Tidak Lulus'.";
+                return "Gagal mengupdate hasil untuk NIM " + nim;
             }
-        } else {
-            return "Mahasiswa dengan NIM " + nim + " tidak ditemukan.";
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Error database: " + e.getMessage();
         }
     }
 
     public String umumkanHasilAkhir() {
         if (!koordinatorLoggedIn) return "Hanya koordinator yang dapat mengumumkan hasil.";
+        
         StringBuilder pengumumanLog = new StringBuilder("--- Pengumuman Hasil Akhir Kelulusan ---\n");
-        boolean adaYangDiumumkan = false;
+        String sqlUpdateDiterima = "UPDATE mahasiswa SET status_akhir = 'Diterima' WHERE status_tahap1 = 'Lulus' AND status_tahap2 = 'Lulus' AND status_akhir = 'Belum Ditentukan'";
+        String sqlUpdateTidakDiterima = "UPDATE mahasiswa SET status_akhir = 'Tidak Diterima' WHERE (status_tahap1 != 'Lulus' OR status_tahap2 != 'Lulus') AND status_akhir = 'Belum Ditentukan'";
 
-        for (Mahasiswa mhs : daftarMahasiswa) {
-            Kelulusan status = mhs.getStatusKelulusan();
-            // Hanya proses jika status akhir masih "Belum Ditentukan" dan kedua tahap sudah ada hasilnya (bukan "Belum Ujian" atau "Menunggu Pengumuman")
-            if ("Belum Ditentukan".equals(status.getStatusAkhir()) &&
-                (!"Belum Ujian".equals(status.getStatusTahap1()) && !"Menunggu Pengumuman".equals(status.getStatusTahap1())) &&
-                (!"Belum Ujian".equals(status.getStatusTahap2()) && !"Menunggu Pengumuman".equals(status.getStatusTahap2())) ) {
-                
-                adaYangDiumumkan = true;
-                if ("Lulus".equals(status.getStatusTahap1()) && "Lulus".equals(status.getStatusTahap2())) {
-                    status.setStatusAkhir("Diterima");
-                } else { // Jika salah satu atau kedua tahap tidak lulus
-                    status.setStatusAkhir("Tidak Diterima");
-                }
-                pengumumanLog.append("NIM ").append(mhs.getNim()).append(" (").append(mhs.getNamaMahasiswa()).append("): Hasil Akhir - ").append(status.getStatusAkhir()).append("\n");
-            } else if ("Belum Ditentukan".equals(status.getStatusAkhir())) {
-                 pengumumanLog.append("NIM ").append(mhs.getNim()).append(": Hasil akhir belum dapat ditentukan (cek status tahap 1 & 2 belum final).\n");
+        try (Connection conn = KoneksiDatabase.getKoneksi();
+             Statement stmt = conn.createStatement()) {
+            
+            int diterimaCount = stmt.executeUpdate(sqlUpdateDiterima);
+            pengumumanLog.append(diterimaCount).append(" mahasiswa diubah statusnya menjadi DITERIMA.\n");
+
+            int tidakDiterimaCount = stmt.executeUpdate(sqlUpdateTidakDiterima);
+            pengumumanLog.append(tidakDiterimaCount).append(" mahasiswa diubah statusnya menjadi TIDAK DITERIMA.\n");
+            
+            if (diterimaCount == 0 && tidakDiterimaCount == 0) {
+                pengumumanLog.append("Tidak ada mahasiswa yang statusnya perlu diumumkan saat ini.\n");
             }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+            pengumumanLog.append("\nERROR SAAT PENGUMUMAN: ").append(e.getMessage());
         }
-         if (!adaYangDiumumkan && daftarMahasiswa.stream().noneMatch(m -> "Belum Ditentukan".equals(m.getStatusKelulusan().getStatusAkhir()))) {
-            pengumumanLog.append("Semua hasil akhir mahasiswa sudah ditentukan sebelumnya atau tidak ada yang memenuhi syarat untuk diumumkan saat ini.\n");
-        } else if (!adaYangDiumumkan) {
-            pengumumanLog.append("Tidak ada mahasiswa yang status akhirnya dapat diumumkan saat ini (pastikan tahap 1 & 2 sudah selesai diproses).\n");
-        }
+        
         pengumumanLog.append("Pengumuman hasil akhir selesai.");
         return pengumumanLog.toString();
     }
 
     public String getLaporanUntukDekan() {
         if (!koordinatorLoggedIn) return "Hanya koordinator yang dapat melihat laporan.";
+        
         StringBuilder laporan = new StringBuilder();
         laporan.append("===== LAPORAN KELULUSAN ANGGOTA BARU =====\n");
         laporan.append("Programmer Association of Battuta\n");
         laporan.append("==========================================\n");
+
+        List<Mahasiswa> daftarMahasiswa = getDaftarMahasiswa(); // Gunakan metode yang sudah ada
+
         if (daftarMahasiswa.isEmpty()) {
             laporan.append("Tidak ada data mahasiswa untuk dilaporkan.\n");
         } else {

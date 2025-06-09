@@ -2,15 +2,24 @@ package model;
 
 public class Kelulusan {
     private String nimMahasiswa;
-    private String statusTahap1; // "Belum Ujian", "Lulus", "Tidak Lulus" [cite: 93]
-    private String statusTahap2; // "Belum Ujian", "Lulus", "Tidak Lulus" [cite: 93]
-    private String statusAkhir;  // "Belum Ditentukan", "Diterima", "Tidak Diterima"
+    private String statusTahap1;
+    private String statusTahap2;
+    private String statusAkhir;
 
+    // Konstruktor untuk mahasiswa baru
     public Kelulusan(String nimMahasiswa) {
         this.nimMahasiswa = nimMahasiswa;
         this.statusTahap1 = "Belum Ujian";
         this.statusTahap2 = "Belum Ujian";
         this.statusAkhir = "Belum Ditentukan";
+    }
+    
+    // Konstruktor baru untuk memuat data dari database
+    public Kelulusan(String nimMahasiswa, String statusTahap1, String statusTahap2, String statusAkhir) {
+        this.nimMahasiswa = nimMahasiswa;
+        this.statusTahap1 = statusTahap1;
+        this.statusTahap2 = statusTahap2;
+        this.statusAkhir = statusAkhir;
     }
 
     // Getters

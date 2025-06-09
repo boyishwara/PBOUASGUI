@@ -6,26 +6,41 @@ import java.util.List;
 public class Mahasiswa {
     private String nim;
     private String namaMahasiswa;
-    private String jenisKelamin; // Laki-laki, Perempuan
-    private String prodi; // Inf, SI, TI [cite: 93]
+    private String jenisKelamin;
+    private String prodi;
     private String email;
     private String password;
     private String nomorTelp;
     private String alamat;
-    private List<Dokumen> dokumenList;
+    private List<Dokumen> dokumenList; // List ini tidak lagi diisi otomatis, tapi bisa digunakan jika ada fitur lihat dokumen
     private Kelulusan statusKelulusan;
 
+    // Konstruktor utama yang digunakan saat registrasi dari GUI
     public Mahasiswa(String nim, String namaMahasiswa, String jenisKelamin, String prodi, String email, String password, String nomorTelp, String alamat) {
         this.nim = nim;
         this.namaMahasiswa = namaMahasiswa;
         this.jenisKelamin = jenisKelamin;
         this.prodi = prodi;
         this.email = email;
-        this.password = password; // Dalam aplikasi nyata, password harus di-hash
+        this.password = password;
         this.nomorTelp = nomorTelp;
         this.alamat = alamat;
         this.dokumenList = new ArrayList<>();
-        this.statusKelulusan = new Kelulusan(nim); // Setiap mahasiswa punya status kelulusan
+        this.statusKelulusan = new Kelulusan(nim); // Status awal saat registrasi
+    }
+
+    // Konstruktor baru untuk membuat objek dari data database
+    public Mahasiswa(String nim, String namaMahasiswa, String jenisKelamin, String prodi, String email, String password, String nomorTelp, String alamat, Kelulusan statusKelulusan) {
+        this.nim = nim;
+        this.namaMahasiswa = namaMahasiswa;
+        this.jenisKelamin = jenisKelamin;
+        this.prodi = prodi;
+        this.email = email;
+        this.password = password;
+        this.nomorTelp = nomorTelp;
+        this.alamat = alamat;
+        this.dokumenList = new ArrayList<>(); // Biarkan kosong, isi jika diperlukan
+        this.statusKelulusan = statusKelulusan; // Gunakan status dari database
     }
 
     // Getters
@@ -40,7 +55,7 @@ public class Mahasiswa {
     public List<Dokumen> getDokumenList() { return dokumenList; }
     public Kelulusan getStatusKelulusan() { return statusKelulusan; }
 
-    // Setters
+    // Setters (bisa disesuaikan jika perlu)
     public void setNamaMahasiswa(String namaMahasiswa) { this.namaMahasiswa = namaMahasiswa; }
     public void setJenisKelamin(String jenisKelamin) { this.jenisKelamin = jenisKelamin; }
     public void setProdi(String prodi) { this.prodi = prodi; }
@@ -49,18 +64,18 @@ public class Mahasiswa {
     public void setNomorTelp(String nomorTelp) { this.nomorTelp = nomorTelp; }
     public void setAlamat(String alamat) { this.alamat = alamat; }
 
+    // Metode ini tetap bisa digunakan, tapi controller yang akan menyimpannya ke DB
     public void tambahDokumen(Dokumen dokumen) {
         this.dokumenList.add(dokumen);
-        System.out.println("Dokumen " + dokumen.getNamaDokumen() + " berhasil ditambahkan untuk NIM " + this.nim);
     }
 
     @Override
     public String toString() {
         return "Mahasiswa {" +
-               "NIM='" + nim + '\'' +
-               ", Nama='" + namaMahasiswa + '\'' +
-               ", Prodi='" + prodi + '\'' +
-               ", Email='" + email + '\'' +
-               '}';
+            "NIM='" + nim + '\'' +
+            ", Nama='" + namaMahasiswa + '\'' +
+            ", Prodi='" + prodi + '\'' +
+            ", Email='" + email + '\'' +
+            '}';
     }
 }
