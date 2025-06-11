@@ -1,15 +1,15 @@
 package model;
 
 public class Soal {
-    private static int nextIdSoal = 1;
     private int idSoal;
     private String pertanyaan;
-    private String[] opsiJawaban; // Misal: opsi[0]=A, opsi[1]=B, dst.
-    private int kunciJawabanIndex; // Index dari array opsiJawaban
-    private String tipeUjian; // Tahap1, Tahap2
+    private String[] opsiJawaban;
+    private int kunciJawabanIndex;
+    private String tipeUjian;
 
-    public Soal(String pertanyaan, String[] opsiJawaban, int kunciJawabanIndex, String tipeUjian) {
-        this.idSoal = nextIdSoal++;
+    // Konstruktor disesuaikan untuk menerima idSoal dari database
+    public Soal(int idSoal, String pertanyaan, String[] opsiJawaban, int kunciJawabanIndex, String tipeUjian) {
+        this.idSoal = idSoal;
         this.pertanyaan = pertanyaan;
         this.opsiJawaban = opsiJawaban;
         this.kunciJawabanIndex = kunciJawabanIndex;

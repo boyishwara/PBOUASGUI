@@ -27,10 +27,10 @@ public class Dokumen {
     @Override
     public String toString() {
         return "Dokumen {" +
-               "ID=" + id +
-               ", NIM Mahasiswa='" + nimMahasiswa + '\'' +
-               ", Nama Dokumen='" + namaDokumen + '\'' +
-               ", Path File='" + pathFile + '\'' +
-               '}';
+            "ID=" + id +
+            ", NIM Mahasiswa='" + nimMahasiswa + '\'' +
+            ", Nama Dokumen='" + namaDokumen + '\'' +
+            ", Path File='" + pathFile + '\'' +
+            '}';
     }
 }
