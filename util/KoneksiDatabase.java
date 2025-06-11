@@ -6,13 +6,12 @@ import java.sql.SQLException;
 import javax.swing.JOptionPane;
 
 /**
- * Kelas utilitas untuk mengelola koneksi ke database MySQL.
- * Kredensial sekarang diatur secara dinamis saat runtime.
+ * Kelas util untuk mengelola koneksi ke database MySQL.
  */
 public class KoneksiDatabase {
     private static final String URL = "jdbc:mysql://localhost:3306/db_pbo_uas";
     
-    // Kredensial sekarang disimpan sebagai variabel statis setelah diinisialisasi.
+    // Kredensial disimpan sebagai variabel statis setelah diinisialisasi.
     private static String dbUser;
     private static String dbPassword;
     private static Connection koneksi;
@@ -59,7 +58,6 @@ public class KoneksiDatabase {
             }
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(null, "Koneksi database terputus, mencoba menghubungkan kembali: " + e.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
-            // Anda dapat menangani error ini secara berbeda, misalnya dengan mencoba menghubungkan kembali.
         }
         return koneksi;
     }
